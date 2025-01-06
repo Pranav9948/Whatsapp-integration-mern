@@ -1,3 +1,56 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+
+.glowButton {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 180px;
+    height: 60px;
+    background-color: green;
+    color: white;
+    font-size: 16px;
+    cursor: pointer;
+    border: none;
+    outline: none;
+    overflow: hidden; /* Keep the animation within bounds */
+  }
+  
+  .glowButton span {
+    position: relative;
+    z-index: 1; /* Keep the text above the animation */
+  }
+  
+  .svg-border {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    fill: none;
+    stroke: none;
+    pointer-events: none; /* Allow clicking through the SVG */
+  }
+  
+  .bg-line {
+    stroke: rgba(255, 255, 255, 0.2);
+    stroke-width: 2px;
+  }
+  
+  .glow-line {
+    stroke: purple; /* Glowing white stroke */
+    stroke-width: 2px;
+    stroke-dasharray: 320; /* Matches the polyline's total length */
+    stroke-dashoffset: 320; /* Start with the line offscreen */
+    animation: glowingBorder 2s linear infinite; /* Infinite animation */
+  }
+  
+  @keyframes glowingBorder {
+    to {
+      stroke-dashoffset: 0; /* Move the stroke along the path */
+    }
+  }
+  

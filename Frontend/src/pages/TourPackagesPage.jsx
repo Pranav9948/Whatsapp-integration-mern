@@ -1,11 +1,13 @@
 import React, { useState } from 'react'
 import {jsonData} from "../data"
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { FaWhatsapp } from 'react-icons/fa'
 import axios from 'axios'
 
 function TourPackagesPage() {
 
+
+  const navigate=useNavigate()
  
 
   const EnquirePackageDetails=async(id)=>{
@@ -16,17 +18,24 @@ function TourPackagesPage() {
 
 
       const selectedPackage=jsonData.filter((pkg)=>pkg.id===id)
-      
+
+      if (selectedPackage) {
     
+        localStorage.setItem('selectedPackage', JSON.stringify(selectedPackage));
+        console.log('Package stored successfully!');
+      } 
+      
 
       const {data} = await axios.post(
         "http://localhost:8500/api/whatsapp/enquire-package-details",{selectedPackage}
       );
 
+      navigate('/tour-packages-video')
+
     }
     
     catch(error){
-      // console.log(error)
+      console.log(error)
     }
   }
 

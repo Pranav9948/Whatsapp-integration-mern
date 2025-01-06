@@ -9,12 +9,10 @@ function RegistrationPage() {
 
   const generateTemplateWhatsappMessage = async () => {
     try {
-   
       const { data } = await axios.post(
         "http://localhost:8500/api/whatsapp/welcome-message",
         { recipientName: "Pranav" }
       );
-      
 
       alert(data);
       navigate("/tour-packages");
@@ -52,6 +50,10 @@ function RegistrationPage() {
               Whatsapp Now
             </button>
           </Link>
+
+
+
+         
         </div>
       </div>
     </div>

@@ -6,17 +6,21 @@ import dotenv from "dotenv";
 import axios from "axios";
 import mongoose from "mongoose";
 
-
 import User from "./models/userSchema.js";
 
 import connectDB from "./db/db.js";
 import {
+  BookingCancellationTemplate,
+  BookingConfirmationTemplate,
   getWelcomeMessageTemplate,
   replyMessageStorage,
-  sendMessage,
-  
+  sendMessage,getSenderandMessageDetails
 } from "./Helpers/WhatsappHelper.js";
-import { sendQuickReplyButtonMessages } from "./controllers/whatsappControllers.js";
+import {
+  getReplyToCustomer,
+  getTemplateMissingCustomer,
+  sendQuickReplyButtonMessages,
+} from "./controllers/whatsappControllers.js";
 
 const app = express();
 const PORT = process.env.PORT || 8500;
@@ -32,6 +36,19 @@ connectDB();
 
 const myToken = process.env.MYTOKEN;
 const processedMessages = {};
+
+const requiredFields = [
+  "- Package Name:",
+  "- Check-in Date:",
+  "- Check-out Date:",
+  "- Number of Rooms:",
+  "- Room Type:",
+  "- Adults:",
+  "- Children:",
+  "- Toddlers:",
+  "- Infants:",
+  "- Total Price:",
+];
 
 app.use("/api/whatsapp", whatsappRoutes);
 
@@ -55,9 +72,8 @@ app.get("/webhook", (req, res) => {
   }
 });
 
-
 app.post("/webhook", async (req, res) => {
-  const { body: bodyParam } = req; 
+  const { body: bodyParam } = req;
   console.log(JSON.stringify(bodyParam, null, 2));
 
   // Check if the request contains the expected object
@@ -73,11 +89,8 @@ app.post("/webhook", async (req, res) => {
     return res.status(400).send("Invalid payload structure");
   }
 
- 
   if (value.messages?.[0]) {
-    const { phone_number_id: phoneNumberId, messages } = value;  
-   
-
+    const { phone_number_id: phoneNumberId, messages } = value;
 
     const { from: senderId, type: messageType, id: messageId } = messages[0];
 
@@ -91,32 +104,6 @@ app.post("/webhook", async (req, res) => {
     console.log("Message ID:", messageId);
     console.log("Incoming message:", msgBody);
 
-    if (!msgBody) {
-      console.error("Message body is undefined.");
-      return res.status(400).send("Message body is undefined");
-    }
-
-
-    if (msgBody.trim().toLowerCase() === "confirm booking") {
-      const confirmationMessage = `
-        🌟 Thank you for confirming your interest in our package!
-
-        A travel specialist will be in touch shortly to discuss your booking and answer any questions you may have. 
-        If you need immediate assistance, feel free to reach out to us at 📞 +60179819827 
-
-        We're excited to help you plan your trip! ✈️
-      `;
-
-      // Send the confirmation message
-      await sendQuickReplyButtonMessages(senderId,confirmationMessage);
-
-      console.log("Confirmation message sent:", confirmationMessage);
-      return res.status(200).send("Confirmation message sent successfully");
-    }
-
-
-
-
     const existingUser = await User.findOne({ senderId });
 
     if (existingUser) {
@@ -124,7 +111,9 @@ app.post("/webhook", async (req, res) => {
 
       // Check if the messageId is already in the messageIds array
       if (existingUser.messageIds.includes(messageId)) {
-        console.log("Message ID already exists for this user. No further actions will be taken.");
+        console.log(
+          "Message ID already exists for this user. No further actions will be taken."
+        );
         return res.status(200).send("Message ID already exists"); // Respond to the client
       }
 
@@ -133,13 +122,74 @@ app.post("/webhook", async (req, res) => {
       await existingUser.save();
       console.log("New message ID added for existing user:", existingUser);
 
-      // Handle reply logic for existing users
-      const response = await replyMessageStorage(msgBody, "User", senderId, messageType);
-      console.log("Response for existing user:", response);
+      if (!msgBody) {
+        console.error("Message body is undefined.");
+        return res.status(400).send("Message body is undefined");
+      }
 
+      if (msgBody.trim().toLowerCase() === "confirm booking") {
+        const responseTemplate = await BookingConfirmationTemplate(senderId,msgBody);
+
+        console.log("responseTemplate", responseTemplate);
+
+        const completedResponse = await sendMessage(responseTemplate);
+
+        return res.status(200).send("Confirmation message sent successfully");
+      }
+
+      // Handle "Cancel Inquiry" message
+      if (msgBody.trim().toLowerCase() === "cancel inquiry") {
+        const responseTemplate = await BookingCancellationTemplate(senderId,msgBody);
+
+        console.log("responseTemplate", responseTemplate);
+
+        const completedResponse = await sendMessage(responseTemplate);
+
+        return res.status(200).send("Cancellation message sent successfully");
+      }
+
+      // Analyzing message content
+
+      const interestPattern = /^Hello, I am interested in booking/i;
+
+      // Step 2: Check if all required fields are present
+      const hasAllDetails = (msgBody) =>
+        requiredFields.every((field) => msgBody.includes(field));
+
+      if (interestPattern.test(msgBody)) {
+        // Scenario 1: All required fields are present
+        if (hasAllDetails(msgBody)) {
+          console.log("Detected Scenario 1: All Details Filled");
+
+          await getReplyToCustomer(req,res,senderId,msgBody)
+
+          return res.status(200).send("Message sent successfully");
+        } else {
+          // Scenario 2: Missing Details
+          console.log("Detected Scenario 2: Missing Details");
+
+          await getTemplateMissingCustomer(req,res,senderId,msgBody);
+
+          return res.status(200).send("Message sent successfully");
+        }
+      } else {
+        // No match if the initial phrase isn't present
+        console.log("No condition matched...");
+      }
+
+      // Handle reply logic for existing users
+      const response = await replyMessageStorage(
+        msgBody,
+        "User",
+        senderId,
+        messageType
+      );
+      console.log("Response for existing user:", response);
     } else {
       // New user case
-      console.log("New user detected. Creating user and sending welcome message.");
+      console.log(
+        "New user detected. Creating user and sending welcome message."
+      );
 
       const newUser = new User({
         senderId,
@@ -149,15 +199,14 @@ app.post("/webhook", async (req, res) => {
       await newUser.save();
       console.log("New user created:", newUser);
 
-      // Send the welcome message template 
-      const responseTemplate = getWelcomeMessageTemplate(process.env.RECIPIENT_WAID, "User");
+      // Send the welcome message template
+      const responseTemplate = getWelcomeMessageTemplate(
+        senderId,
+        "User"
+      );
       const completedResponse = await sendMessage(responseTemplate);
       console.log("Welcome message sent to new user:", completedResponse);
     }
-
-
-   
-
 
     // Respond to the client
     return res.status(200).send("Webhook processed successfully");
@@ -173,6 +222,9 @@ app.post("/webhook", async (req, res) => {
   // If no recognizable event type
   return res.status(400).send("Unrecognized event type");
 });
+
+
+
 
 
 app.listen(PORT, () => {

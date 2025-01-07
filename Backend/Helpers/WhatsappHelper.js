@@ -2,6 +2,7 @@ import axios from "axios";
 import FormData from "form-data";
 import fs from "fs";
 import colors from "colors";
+import TourPackageImage from "../models/tourpackageimages.js";
 
 async function sendMessage(data) {
   try {
@@ -16,7 +17,7 @@ async function sendMessage(data) {
     };
 
     const response = await axios(config);
-    console.log("Message sent successfully:", response.data);
+   
     return response.data;
   } catch (error) {
     console.log("err".america, error.config.data);
@@ -62,7 +63,7 @@ function getImageTemplatedMessage(recipient, tourPackage) {
   return JSON.stringify({
     messaging_product: "whatsapp",
     to: recipient,
-    type: "template",   
+    type: "template",
     template: {
       name: "tour_package_enquiry",
       language: {
@@ -169,14 +170,6 @@ function getBookNowMessageTemplate(recipient, bookingDetails) {
   });
 }
 
-
-
-
-
-
-
-
-
 function getWelcomeMessageTemplate(recipient, recipientName) {
   console.log("recipientName", recipientName);
   return JSON.stringify({
@@ -216,9 +209,8 @@ function getWelcomeMessageTemplate(recipient, recipientName) {
 }
 
 function getVideoMessageInput(recipient, customerName, packageDetails) {
+  console.log("packageDetails", colors.magenta(packageDetails));
 
-  console.log("packageDetails",colors.magenta(packageDetails));
-  
   return JSON.stringify({
     messaging_product: "whatsapp",
     to: recipient,
@@ -440,7 +432,7 @@ async function sendLocationMessage(recipient, customerName, pickupDetails) {
               text: customerName,
             },
             {
-              type: "text", 
+              type: "text",
               text: pickupDetails.tripName,
             },
             {
@@ -483,7 +475,6 @@ async function replyMessageStorage(userMessage, username, from, messageType) {
       confusion: ["confused", "don't understand", "not clear", "help"],
       unknown: [],
     };
-
 
     const responses = {
       greeting: "Hello! How can we assist you today?",
@@ -610,61 +601,90 @@ async function replyMessageStorage(userMessage, username, from, messageType) {
   }
 }
 
+function mapBookingDetailsFromMessage(msgBody) {
+  const bookingDetailsArray = {
+    packageName: "Not Provided",
+
+    checkIn: "Not Provided",
+    checkOut: "Not Provided",
+    roomType: "Not Provided",
+    roomCount: "Not Provided",
+    totalPrice: "Not Provided",
+    adultCount: "Not Provided",
+    childCount: "Not Provided",
+    toddlerCount: "Not Provided",
+    infantCount: "Not Provided",
+    packageOption: "Not Provided",
+    headerImageUrl: "Not Provided",
+  };
+
+  // Use regex to extract details from the msgBody
+  const extract = (fieldName, regex) => {
+    const match = msgBody.match(regex);
+    return match ? match[1].trim() : "Not Provided";
+  };
+
+  // Map fields from the message body
+  bookingDetailsArray.packageName = extract(
+    "Package Name",
+    /- Package Name:\s*(.+)/
+  );
+  bookingDetailsArray.checkIn = extract(
+    "Check-in Date",
+    /- Check-in Date:\s*(.+)/
+  );
+  bookingDetailsArray.checkOut = extract(
+    "Check-out Date",
+    /- Check-out Date:\s*(.+)/
+  );
+  bookingDetailsArray.roomType = extract("Room Type", /- Room Type:\s*(.+)/);
+  bookingDetailsArray.roomCount = extract(
+    "Number of Rooms",
+    /- Number of Rooms:\s*(\d+)/
+  );
+  bookingDetailsArray.adultCount = extract("Adults", /- Adults:\s*(\d+)/);
+  bookingDetailsArray.childCount = extract("Children", /- Children:\s*(\d+)/);
+  bookingDetailsArray.toddlerCount = extract("Toddlers", /- Toddlers:\s*(\d+)/);
+  bookingDetailsArray.infantCount = extract("Infants", /- Infants:\s*(\d+)/);
+  bookingDetailsArray.totalPrice = extract(
+    "Total Price",
+    /- Total Price:\s*([\d,\.]+)/
+  );
+
+  // Return the mapped booking details
+  return bookingDetailsArray;
+}
 
 ///helloo
 
-
-async function getImageTemplateReplyMessage(){
-
-console.log('hello',colors.magenta("helloooo"))
-
+async function getImageTemplateReplyMessage(senderId, msgBody) {
   try {
-    const bookingDetails = {
-      packageName: "Bali Beach Getaway",
-      customerName: "John Doe",
-      checkIn: "2024-12-25",
-      checkOut: "2025-01-05",
-      roomType: "Deluxe Ocean View",
-      roomCount: 2,
-      totalPrice: 15000,
-      adultCount: 2,
-      adultPrice: 7500,
-      childCount: 1,
-      childPrice: 3000,
-      toddlerCount: 0,
-      toddlerPrice: 0,
-      infantCount: 0,
-      infantPrice: 0,
-      packageOption: "All Inclusive",
-      headerImageUrl:
-        "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRWyjlP-bbnNr9mWSm4reG8khducnLTMrZrNw&s",
-    };
+    const bookingDetails = await mapBookingDetailsFromMessage(msgBody);
 
     const {
       packageName,
-      customerName,
       checkIn,
       checkOut,
       roomType,
       roomCount,
       totalPrice,
-      adultCount,  
-      adultPrice,
+      adultCount,
+
       childCount,
-      childPrice,
+
       toddlerCount,
-      toddlerPrice,
+
       infantCount,
-      infantPrice,
-      packageOption,
-      headerImageUrl,
+    
     } = bookingDetails;
 
-    const recipient = process.env.NEXT_PUBLIC_WHATSAPP_RECIPIENT_WAID;
+    let headerImageUrl = await getPackageImage(packageName);
+
+    
 
     return JSON.stringify({
       messaging_product: "whatsapp",
-      to: 917736228299,
+      to: senderId,
       type: "template",
       template: {
         name: "booknow_reply_customers",
@@ -706,7 +726,6 @@ console.log('hello',colors.magenta("helloooo"))
             ],
           },
 
-
           {
             type: "button",
             sub_type: "quick_reply",
@@ -718,9 +737,7 @@ console.log('hello',colors.magenta("helloooo"))
             sub_type: "quick_reply",
             index: 1,
             parameters: [{ type: "payload", payload: "Cancel Inquiry" }],
-          }
-
-
+          },
         ],
       },
     });
@@ -731,21 +748,220 @@ console.log('hello',colors.magenta("helloooo"))
     );
     return res.status(500).send("Failed to send message.");
   }
+}
+
+async function BookingConfirmationTemplate(senderId, msgBody) {
+  console.log(colors.cyan("reaching...."));
+
+  try {
+    return JSON.stringify({
+      messaging_product: "whatsapp",
+      to: senderId,
+      type: "template",
+      template: {
+        name: "booking_confirmation_template",
+        language: {
+          code: "en",
+        },
+        components: [
+          {
+            type: "header",
+            parameters: [
+              {
+                type: "image",
+                image: {
+                  link: "https://t4.ftcdn.net/jpg/00/65/48/25/360_F_65482539_C0ZozE5gUjCafz7Xq98WB4dW6LAhqKfs.jpg",
+                },
+              },
+            ],
+          },
+          {
+            type: "body",
+            parameters: [],
+          },
+        ],
+      },
+    });
+  } catch (error) {
+    console.error(
+      "Error sending message:",
+      error.response?.data || error.message
+    );
+    return res.status(500).send("Failed to send message.");
+  }
+}
+
+async function BookingCancellationTemplate(senderId, msgBody) {
+  try {
+    return JSON.stringify({
+      messaging_product: "whatsapp",
+      to: 917736228299,
+      type: "template",
+      template: {
+        name: "cancellation_template ",
+        language: {
+          code: "en",
+        },
+        components: [
+          {
+            type: "header",
+            parameters: [
+              {
+                type: "image",
+                image: {
+                  link: "https://img.freepik.com/premium-vector/sad-person-sitting-crying-near-suitcases-travelling-ticket-with-cancelled-mark_165932-811.jpg",
+                },
+              },
+            ],
+          },
+          {
+            type: "body",
+            parameters: [],
+          },
+        ],
+      },
+    });
+  } catch (error) {
+    console.error(
+      "Error sending message:",
+      error.response?.data || error.message
+    );
+    return res.status(500).send("Failed to send message.");
+  }
+}
+
+async function missingTemplateReplyMessage( senderId, msgBody) {
+  console.log("hello", colors.magenta("helloooo"));
+
+  try {
+   
+
+    const bookingDetails = await mapBookingDetailsFromMessage(msgBody);
+
+    const {
+      packageName,
+      checkIn,
+      checkOut,
+      roomType,
+      roomCount,
+      totalPrice,
+      adultCount,
+
+      childCount,
+
+      toddlerCount,
+
+      infantCount,
+    
+    } = bookingDetails;
+
+    let headerImageUrl = await getPackageImage(packageName);
+
+
+   
+
+ 
+
+    return JSON.stringify({
+      messaging_product: "whatsapp",
+      to: senderId,
+      type: "template",
+      template: {
+        name: "booknow_flow_not_completed",
+        language: {
+          code: "en",
+        },
+        components: [
+          {
+            type: "header",
+            parameters: [
+              {
+                type: "image",
+                image: {
+                  link: headerImageUrl,
+                },
+              },
+            ],
+          },
+          {
+            type: "body",
+            parameters: [
+              { type: "text", text: `${packageName}` }, // {{1}} - Package Name
+              { type: "text", text: `${checkIn}` }, // {{2}} - Check-in Date
+              { type: "text", text: `${checkOut}` }, // {{3}} - Check-out Date
+              { type: "text", text: `${roomCount}` }, // {{4} - Room Count
+              { type: "text", text: `${roomType}` }, // {{5} - Room Type
+
+              { type: "text", text: `${adultCount}` }, // {{6} - Adult Count
+
+              { type: "text", text: `${childCount}` }, // {{7}- Child Count
+
+              { type: "text", text: `${toddlerCount}` }, // {{8}}- Toddler Count
+
+              { type: "text", text: `${infantCount}` }, // {{9}} Infant Count
+            ],
+          },
+
+          {
+            type: "button",
+            sub_type: "quick_reply",
+            index: 0,
+            parameters: [
+              { type: "payload", payload: "Select Missing Details" },
+            ],
+          },
+        ],
+      },
+    });
+  } catch (error) {
+    console.error(
+      "Error sending message:",
+      error.response?.data || error.message
+    );
+    return res.status(500).send("Failed to send message.");
+  }
+}
+
+const uploadPackageImage = async (packageName, imageUrl) => {
+  try {
+    const existingPackage = await TourPackageImage.findOne({ packageName });
+    if (existingPackage) {
+      existingPackage.imageUrl = imageUrl;
+      await existingPackage.save();
+      return {
+        message: "Package image updated successfully.",
+        package: existingPackage,
+      };
+    }
+
+    const newPackage = new TourPackageImage({ packageName, imageUrl });
+    await newPackage.save();
+    return {
+      message: "Package image uploaded successfully.",
+      package: newPackage,
+    };
+  } catch (error) {
+    console.error("Error uploading package image:", error.message);
+    throw new Error("Failed to upload package image.");
+  }
 };
 
+const getPackageImage = async (packageName) => {
+  try {
+    const packageData = await TourPackageImage.findOne({ packageName });
+    if (!packageData) {
+      return "https://img.freepik.com/premium-vector/tourist-boy-cartoon-with-bag_24640-43407.jpg?semt=ais_hybrid";
+    }
+    return packageData.imageUrl;
+  } catch (error) {
+    console.error("Error retrieving package image:", error.message);
+    throw new Error("Failed to retrieve package image.");
+  }
+};
 
-
-
-
-
-
-
-
-
-
-
-
-
+const getSenderandMessageDetails = (senderId, msgBody) => {
+  return { senderId, msgBody };
+};
 
 export {
   sendMessage,
@@ -760,4 +976,10 @@ export {
   getBookNowMessageTemplate,
   getImageTemplateReplyMessage,
   replyMessageStorage,
+  BookingConfirmationTemplate,
+  BookingCancellationTemplate,
+  missingTemplateReplyMessage,
+  getSenderandMessageDetails,
+  uploadPackageImage,
+  getPackageImage,
 };
